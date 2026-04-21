@@ -62,90 +62,172 @@ export default function GuidePage() {
   return (
     <div className="max-w-4xl mx-auto px-6 py-12 space-y-8">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Platform Guide</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Monorepo Deployment Guide</h2>
         <p className="text-muted-foreground mt-2">
-          How apps get created, built, and deployed in this monorepo — and how to add a new one.
+          How to deploy multiple independent apps from a single Turborepo monorepo using
+          GitHub Actions and the Vercel CLI — no microfrontends, no multizone, no built-in Git Integration.
         </p>
       </div>
 
-      <SectionCard number={1} title="How This Repo Works">
+      <SectionCard number={1} title="The Problem">
         <p>
-          Each app in <code>apps/</code> is its own Vercel Project. They share the repo for
-          structure, shared packages, and Turborepo caching — but they deploy independently to
-          separate URLs.
+          You have one repo with multiple apps. Each app needs its own Vercel Project, its own
+          URL, and its own deployment lifecycle. Vercel&apos;s built-in Git Integration links
+          one repo to one project — it doesn&apos;t natively handle &quot;push to this repo
+          deploys five different projects depending on what changed.&quot;
+        </p>
+        <p>
+          The solution: <strong>GitHub Actions + the Vercel CLI + a <code>VERCEL_TOKEN</code></strong>.
+          Your CI pipeline detects which apps changed, then runs <code>vercel deploy</code> for
+          each affected app using the CLI. No microfrontends. No multizone. Each app is a
+          completely independent Vercel Project that happens to live in the same repo.
         </p>
         <Callout>
-          <strong>Key insight:</strong> Each app is a standalone deployment with its own URL,
-          its own environment variables, and its own deployment lifecycle. Merging to{" "}
-          <code>main</code> triggers production deploys for affected apps only.
+          <strong>This is not multizone.</strong> Multizone composes multiple Next.js apps under
+          one domain with path-based routing. This pattern gives each app its own domain and its
+          own deployment — they just share a repo for code reuse and build caching.
         </Callout>
       </SectionCard>
 
-      <SectionCard number={2} title="Repo Structure">
-        <CodeBlock label="File structure">{`ro-platform/
+      <SectionCard number={2} title="How It Works">
+        <p>The architecture has three layers:</p>
+        <div className="mt-2 space-y-3">
+          <p>
+            <strong>Turborepo monorepo</strong> — pnpm workspaces define which directories are
+            packages. <code>turbo.json</code> orchestrates builds and caches outputs. Apps live
+            in <code>apps/</code>, shared libraries in <code>packages/</code>.
+          </p>
+          <p>
+            <strong>Independent Vercel Projects</strong> — each app in <code>apps/</code> is
+            linked to its own Vercel Project with <code>rootDirectory</code> set to that app&apos;s
+            folder. Each project has its own domain, environment variables, and deployment history.
+          </p>
+          <p>
+            <strong>GitHub Actions CI/CD</strong> — a workflow uses a <code>VERCEL_TOKEN</code> to
+            run <code>vercel deploy</code> for each affected app on every push. Feature branches
+            get preview deployments. Merges to <code>main</code> trigger production deploys.
+          </p>
+        </div>
+        <CodeBlock label="Repo structure">{`your-platform/
 ├── apps/
-│   ├── gateway-dashboard/     ← This app (Vercel Project #1)
-│   ├── another-app/           ← Another app (Vercel Project #2)
+│   ├── dashboard/             ← Vercel Project #1 (dashboard.your-domain.com)
+│   ├── docs/                  ← Vercel Project #2 (docs.your-domain.com)
+│   ├── admin/                 ← Vercel Project #3 (admin.your-domain.com)
 │   └── ...
 ├── packages/
 │   ├── ui/                    ← Shared component library
-│   └── config/                ← Shared ESLint/TS config
+│   ├── config/                ← Shared ESLint/TS config
+│   └── db/                    ← Shared database utilities
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml         ← GitHub Actions: builds + deploys via VERCEL_TOKEN
-├── AGENTS.md                  ← Conventions for Claude Code
+│       └── deploy.yml         ← Detects changes, deploys affected apps
 ├── pnpm-workspace.yaml
 ├── turbo.json
 └── package.json`}</CodeBlock>
         <div className="mt-4 space-y-2">
           <p>
-            <code>apps/</code> — Deployable applications. Each directory is its own Vercel
-            Project with a unique URL and deployment lifecycle.
+            <code>apps/</code> — Deployable applications. Each is its own Vercel Project with a
+            unique URL. They can be Next.js, Remix, Astro, or any framework Vercel supports.
           </p>
           <p>
-            <code>packages/</code> — Shared code consumed by apps. Never deployed directly.
+            <code>packages/</code> — Shared code consumed by apps via workspace dependencies.
+            Never deployed directly. Changes here trigger rebuilds of consuming apps.
           </p>
           <p>
-            <code>.github/workflows/</code> — CI/CD that builds and deploys using the Vercel
-            CLI and a <code>VERCEL_TOKEN</code>.
+            <code>.github/workflows/</code> — The CI/CD pipeline that replaces Vercel&apos;s
+            built-in Git Integration. This is where the <code>VERCEL_TOKEN</code> is used.
           </p>
         </div>
       </SectionCard>
 
-      <SectionCard number={3} title="How Deployment Works">
+      <SectionCard number={3} title="The Deployment Pipeline">
         <Callout>
-          This is <strong>not</strong> Vercel&apos;s built-in Git Integration. Deployments are
-          driven by <strong>GitHub Actions</strong> using a <code>VERCEL_TOKEN</code>.
+          <strong>Why not use Vercel&apos;s Git Integration?</strong> The built-in integration
+          maps one repo → one project. With multiple apps in one repo, you need to control
+          which apps deploy on each push. GitHub Actions gives you that control.
         </Callout>
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 space-y-6">
           <div>
             <h4 className="font-semibold text-base mb-2">On push to a feature branch:</h4>
             <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-              <li>GitHub Actions detects which app(s) changed</li>
-              <li>Runs <code>vercel deploy</code> for affected apps using the token</li>
-              <li>Posts preview URLs back to the PR</li>
+              <li>GitHub Actions triggers on the push</li>
+              <li>The workflow detects which <code>apps/</code> directories have changes (using git diff or Turborepo&apos;s <code>--filter</code>)</li>
+              <li>For each affected app, runs <code>vercel deploy</code> using the <code>VERCEL_TOKEN</code></li>
+              <li>Preview URLs are posted back to the PR as comments</li>
             </ol>
           </div>
           <div>
             <h4 className="font-semibold text-base mb-2">On merge to main:</h4>
             <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-              <li>GitHub Actions runs <code>vercel deploy --prod</code> for affected apps</li>
-              <li>Production URLs update</li>
+              <li>Same detection logic identifies affected apps</li>
+              <li>Runs <code>vercel deploy --prod</code> for each affected app</li>
+              <li>Production URLs update — only for apps that actually changed</li>
             </ol>
           </div>
           <div>
-            <h4 className="font-semibold text-base mb-2">Key config per app:</h4>
-            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-              <li>Vercel project <code>rootDirectory</code> → <code>apps/&lt;project-name&gt;</code></li>
-              <li><code>turbo.json</code> handles build orchestration and dependency-aware caching</li>
-              <li>Environment variables are set per-project in Vercel</li>
-            </ul>
+            <h4 className="font-semibold text-base mb-3">Example workflow:</h4>
+            <CodeBlock label=".github/workflows/deploy.yml">{`name: Deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      dashboard: \${{ steps.filter.outputs.dashboard }}
+      docs: \${{ steps.filter.outputs.docs }}
+      admin: \${{ steps.filter.outputs.admin }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            dashboard:
+              - 'apps/dashboard/**'
+              - 'packages/**'
+            docs:
+              - 'apps/docs/**'
+              - 'packages/**'
+            admin:
+              - 'apps/admin/**'
+              - 'packages/**'
+
+  deploy-dashboard:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dashboard == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: |
+          if [ "\${{ github.event_name }}" = "push" ]; then
+            vercel deploy --prod --token=\${{ secrets.VERCEL_TOKEN }}
+          else
+            vercel deploy --token=\${{ secrets.VERCEL_TOKEN }}
+          fi
+        working-directory: apps/dashboard
+        env:
+          VERCEL_ORG_ID: \${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: \${{ secrets.VERCEL_DASHBOARD_PROJECT_ID }}`}</CodeBlock>
           </div>
+          <Callout>
+            <strong>Key detail:</strong> each app needs its own <code>VERCEL_PROJECT_ID</code>{" "}
+            secret because each app is a separate Vercel Project. The <code>VERCEL_ORG_ID</code>{" "}
+            and <code>VERCEL_TOKEN</code> are shared across all apps.
+          </Callout>
         </div>
       </SectionCard>
 
-      <SectionCard number={4} title="Adding a New App">
-        <div className="space-y-6">
+      <SectionCard number={4} title="Setting Up a New App">
+        <p>
+          When you add a new app to the monorepo, you need to create both the app code and
+          a corresponding Vercel Project with <code>rootDirectory</code> pointing to the app folder.
+        </p>
+        <div className="mt-4 space-y-6">
           <div>
             <h4 className="font-semibold text-base mb-2">Step 1: Scaffold the app</h4>
             <CodeBlock label="Terminal">{`cd apps/
@@ -155,66 +237,84 @@ cd ..`}</CodeBlock>
           <div>
             <h4 className="font-semibold text-base mb-2">Step 2: Create the Vercel Project</h4>
             <CodeBlock label="Terminal">{`cd apps/my-new-app
-vercel --yes --scope vercel-internal-playground
+vercel link        # creates .vercel/project.json with project + org IDs
 cd ../..`}</CodeBlock>
             <p className="text-sm text-muted-foreground mt-2">
               This creates a Vercel Project with <code>rootDirectory</code> set to{" "}
-              <code>apps/my-new-app</code>.
+              <code>apps/my-new-app</code>. Grab the project ID from{" "}
+              <code>.vercel/project.json</code> — you&apos;ll need it as a GitHub Actions secret.
             </p>
           </div>
           <div>
-            <h4 className="font-semibold text-base mb-2">Step 3: Wire CI/CD</h4>
+            <h4 className="font-semibold text-base mb-2">Step 3: Add to CI/CD</h4>
             <p className="text-sm text-muted-foreground">
-              The GitHub Actions workflow should already pick up the new app if it follows the
-              conventions in <code>AGENTS.md</code>. Verify the workflow file includes the new
-              app path in its trigger/detection logic.
+              Add a new job to <code>deploy.yml</code> following the same pattern as existing
+              apps. Add a new path filter, a new deploy job, and a new{" "}
+              <code>VERCEL_*_PROJECT_ID</code> secret in your repo settings.
             </p>
           </div>
           <div>
-            <h4 className="font-semibold text-base mb-2">Step 4: First production deploy</h4>
+            <h4 className="font-semibold text-base mb-2">Step 4: First deploy</h4>
             <CodeBlock label="Terminal">{`cd apps/my-new-app
-vercel deploy --prod --yes --scope vercel-internal-playground
+vercel deploy --prod --token=$VERCEL_TOKEN
 cd ../..`}</CodeBlock>
           </div>
         </div>
       </SectionCard>
 
-      <SectionCard number={5} title="The Development Loop">
-        <CodeBlock label="Terminal">{`# Create a feature branch
-git checkout -b feat/new-widget
-
-# Make changes in apps/my-new-app/
-# Commit and push
-git add apps/my-new-app/
-git commit -m "feat(my-new-app): add usage widget"
-git push -u origin feat/new-widget`}</CodeBlock>
-        <div className="mt-4 space-y-2 text-muted-foreground">
-          <p><strong className="text-foreground">What happens:</strong></p>
-          <ul className="list-disc list-inside space-y-1">
-            <li>GitHub Actions detects the push, identifies affected apps</li>
-            <li>Runs <code>vercel deploy</code> for <code>apps/my-new-app</code> only</li>
-            <li>Preview URL is posted to the PR</li>
-            <li>Merging to <code>main</code> triggers <code>vercel deploy --prod</code></li>
-          </ul>
+      <SectionCard number={5} title="Why This Pattern">
+        <div className="space-y-4">
+          <div>
+            <h4 className="font-semibold text-base mb-1">Independent deployment lifecycles</h4>
+            <p className="text-muted-foreground">
+              Pushing a change to <code>apps/docs</code> doesn&apos;t redeploy your dashboard.
+              Each app only rebuilds when its own code or its dependencies in <code>packages/</code> change.
+            </p>
+          </div>
+          <div>
+            <h4 className="font-semibold text-base mb-1">Shared code without duplication</h4>
+            <p className="text-muted-foreground">
+              Your UI components, database utilities, config, and types live in <code>packages/</code>{" "}
+              and are consumed as workspace dependencies. One source of truth, multiple consumers.
+            </p>
+          </div>
+          <div>
+            <h4 className="font-semibold text-base mb-1">Turborepo build caching</h4>
+            <p className="text-muted-foreground">
+              If nothing changed in an app or its dependencies, Turborepo skips the build entirely.
+              In CI, remote caching means builds that already ran on another machine are instant.
+            </p>
+          </div>
+          <div>
+            <h4 className="font-semibold text-base mb-1">No framework lock-in per app</h4>
+            <p className="text-muted-foreground">
+              One app can be Next.js 16, another can be Astro, another can be a plain API.
+              They&apos;re independent Vercel Projects — the monorepo is just a code organization choice.
+            </p>
+          </div>
         </div>
       </SectionCard>
 
       <SectionCard number={6} title="Turborepo Build Caching">
         <p>
-          Turborepo caches build outputs. If <code>apps/my-new-app</code> hasn&apos;t changed
-          and none of its <code>packages/</code> dependencies changed, the build is a cache
-          hit — near-instant.
+          Turborepo caches build outputs based on file hashes. If an app&apos;s source files
+          and its dependency tree haven&apos;t changed, the build is a cache hit — near-instant
+          locally and in CI with remote caching enabled.
         </p>
         <div className="mt-4">
-          <CodeBlock label="Terminal">{`# Run build for all apps (Turborepo figures out what changed)
+          <CodeBlock label="Terminal">{`# Build all apps (Turborepo skips unchanged ones)
 pnpm turbo build
 
-# Run build for a specific app
-pnpm turbo build --filter=my-new-app`}</CodeBlock>
+# Build only one app and its dependencies
+pnpm turbo build --filter=dashboard
+
+# See what Turborepo would build without running it
+pnpm turbo build --dry-run`}</CodeBlock>
         </div>
         <p className="mt-4">
           <code>turbo.json</code> defines the task pipeline: what runs, in what order, and
-          what&apos;s cacheable.
+          what&apos;s cacheable. Combined with the GitHub Actions workflow, this means CI only
+          rebuilds what actually changed.
         </p>
       </SectionCard>
 
@@ -230,23 +330,23 @@ pnpm turbo build --filter=my-new-app`}</CodeBlock>
             <TableBody>
               <TableRow>
                 <TableCell className="font-mono text-sm">turbo.json</TableCell>
-                <TableCell>Build orchestration, caching, task pipeline</TableCell>
+                <TableCell>Build orchestration, caching, task pipeline definitions</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell className="font-mono text-sm">pnpm-workspace.yaml</TableCell>
                 <TableCell>Defines which directories are workspace packages</TableCell>
               </TableRow>
               <TableRow>
-                <TableCell className="font-mono text-sm">AGENTS.md</TableCell>
-                <TableCell>Conventions for Claude Code when adding new apps</TableCell>
+                <TableCell className="font-mono text-sm">.github/workflows/deploy.yml</TableCell>
+                <TableCell>CI/CD — detects changes, deploys affected apps via VERCEL_TOKEN</TableCell>
               </TableRow>
               <TableRow>
-                <TableCell className="font-mono text-sm">.github/workflows/deploy.yml</TableCell>
-                <TableCell>GitHub Actions CI/CD using VERCEL_TOKEN</TableCell>
+                <TableCell className="font-mono text-sm">apps/&lt;app&gt;/.vercel/project.json</TableCell>
+                <TableCell>Links each app directory to its Vercel Project (org + project IDs)</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell className="font-mono text-sm">apps/&lt;app&gt;/package.json</TableCell>
-                <TableCell>Must have unique name field</TableCell>
+                <TableCell>Must have a unique name field for workspace resolution</TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -281,6 +381,8 @@ pnpm turbo build --filter=my-new-app`}</CodeBlock>
           </Table>
         </div>
         <p className="mt-4">
+          The concurrent builds limit matters most here — if you push a change that affects
+          5 apps, they queue. On Pro with 12 concurrent builds, this is rarely an issue.
           See{" "}
           <a
             href="https://vercel.com/docs/limits"
@@ -304,17 +406,17 @@ pnpm turbo build --filter=my-new-app`}</CodeBlock>
           >
             Skills
           </a>{" "}
-          are structured instruction packages that extend AI agent capabilities — Claude Code,
-          Cursor, GitHub Copilot, and 15+ other agents. They teach the agent patterns,
+          are structured instruction packages that extend AI coding agents — Claude Code,
+          Cursor, GitHub Copilot, and 15+ others. They teach the agent patterns,
           conventions, and best practices without manual explanation in every prompt.
         </p>
 
         <div className="mt-4">
-          <CodeBlock label="Terminal">{`# Install a skill
+          <CodeBlock label="Terminal">{`# Install a skill into your repo
 npx skills add <owner/repo>`}</CodeBlock>
         </div>
 
-        <h4 className="font-semibold text-base mt-6 mb-3">Recommended skills for this repo:</h4>
+        <h4 className="font-semibold text-base mt-6 mb-3">Recommended for monorepo development:</h4>
         <div className="not-prose">
           <Table>
             <TableHeader>
@@ -328,27 +430,22 @@ npx skills add <owner/repo>`}</CodeBlock>
               <TableRow>
                 <TableCell className="font-medium">React Best Practices</TableCell>
                 <TableCell className="font-mono text-xs">npx skills add vercel-labs/vercel-react-best-practices</TableCell>
-                <TableCell>React/Next.js patterns, Server Components, rendering</TableCell>
+                <TableCell>React/Next.js patterns, Server Components, rendering strategies</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell className="font-medium">Find Skills</TableCell>
                 <TableCell className="font-mono text-xs">npx skills add vercel-labs/find-skills</TableCell>
-                <TableCell>Meta-skill: discovers and installs additional skills</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell className="font-medium">Repo Conventions</TableCell>
-                <TableCell className="font-mono text-xs">Defined in AGENTS.md</TableCell>
-                <TableCell>How to add apps, naming, deployment workflow</TableCell>
+                <TableCell>Meta-skill: discovers and installs additional skills as needed</TableCell>
               </TableRow>
             </TableBody>
           </Table>
         </div>
 
         <Callout>
-          <strong>Why this matters:</strong> Skills make Claude Code (and other agents)
-          immediately productive in this repo without manual onboarding. An agent with the
-          right skills installed knows how to scaffold apps, follow naming conventions, and
-          deploy correctly from the first prompt.
+          <strong>For monorepos specifically:</strong> add an <code>AGENTS.md</code> at the repo
+          root that documents your conventions — where apps go, naming patterns, how to wire
+          CI/CD for a new app, which secrets to add. This file is what makes any AI coding agent
+          immediately productive in the repo without manual onboarding.
         </Callout>
 
         <p className="mt-4">
